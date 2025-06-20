@@ -1,0 +1,76 @@
+```PUML
+@startuml
+class User {
+    - userId : int
+    - username : String
+    - password : String
+    - email : String
+    - address : String
+    - phoneNumber : String
+    --
+    + register()
+    + login()
+    + updateProfile()
+}
+
+class Product {
+    - productId : int
+    - name : String
+    - description : String
+    - price : double
+    - imageUrl : String
+    - category : String
+    --
+    + getDetails()
+    + updatePrice()
+}
+
+class Order {
+    - orderId : int
+    - userId : int
+    - orderDate : Date
+    - totalAmount : double
+    - status : String
+    --
+    + placeOrder()
+    + cancelOrder()
+    + updateStatus()
+}
+
+class ShoppingCart {
+    - cartId : int
+    - userId : int
+    --
+    + addItem(product : Product)
+    + removeItem(product : Product)
+    + updateQuantity(product : Product, quantity : int)
+    + getTotalAmount()
+}
+
+class Payment {
+    - paymentId : int
+    - orderId : int
+    - paymentDate : Date
+    - amount : double
+    - paymentMethod : String
+    --
+    + processPayment()
+    + refundPayment()
+}
+
+class Category {
+    - categoryId : int
+    - name : String
+    --
+    + getProducts()
+}
+
+
+User "1" -- "*" Order : places
+User "1" -- "*" ShoppingCart : owns
+Order "1" -- "1" Payment : made
+Product "1" -- "*" Order : in
+Category "1" -- "*" Product : contains
+
+@enduml
+```
