@@ -2,47 +2,14 @@ import streamlit as st
 import os
 import subprocess
 import requests
-import html  # for escaping PUML code
+import codecs
+import re
 
-# Page configuration
-st.set_page_config(page_title="PUML Diagram Generator", page_icon="🧠", layout="centered")
-
-# Clean modern CSS
-st.markdown("""
-    <style>
-    .bubble {
-        padding: 12px 16px;
-        border-radius: 12px;
-        margin: 8px 0;
-        max-width: 100%;
-        font-size: 15px;
-    }
-    .user {
-        background-color: #1a73e8;
-        color: white;
-        text-align: right;
-        margin-left: 30%;
-    }
-    .assistant {
-        background-color: #2e2e2e;
-        color: white;
-        margin-right: 30%;
-        white-space: pre-wrap;
-        overflow-wrap: break-word;
-    }
-    .diagram-container {
-        border: 1px solid #444;
-        background-color: #1e1e1e;
-        padding: 20px;
-        margin-top: 15px;
-        border-radius: 10px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
+# Setup
+st.set_page_config(page_title="PUML Diagram Generator", page_icon="🧠")
 st.title("🧠 PUML Diagram Generator")
 
-# Dropdown for diagram type
+# Dropdown options
 diagram_types = [
     "Sequence diagram",
     "Usecase diagram",
@@ -55,62 +22,85 @@ diagram_types = [
     "Timing diagram"
 ]
 
-with st.sidebar:
-    st.markdown("### Diagram Type")
-    selected_diagram = st.selectbox("", diagram_types)
-
-# Prompt formatter
+# Prompt generator
 def format_prompt(user_input, diagram_type):
     return f"""
-"You are to act as a PlantUML diagram generator. Given a user's diagram request, reply only with the correct, valid PlantUML code as plain text. Do NOT include JSON, objects, explanations, or comments. Just the raw @startuml code."
-diagram_type = "{diagram_type}"
-User: {user_input}
+You are a PlantUML (PUML) diagram generator.
 
-Assistant:
+Generate only raw PlantUML code for the following {diagram_type}.
+
+Do NOT return:
+- Markdown formatting
+- JSON
+- [object Object]
+- Explanations
+
+Just return plain PUML like:
+@startuml
+title Sample Title
+actor User
+User -> System: Sample interaction
+@enduml
+
+Now generate for:
+"{user_input}"
 """.strip()
 
-# Initialize session state
+# Text cleanup
+def decode_escape_sequences(text: str) -> str:
+    return codecs.decode(text, 'unicode_escape')
+
+def clean_puml_response(text: str) -> str:
+    lines = text.splitlines()
+    lines = [line for line in lines if "[object Object]" not in line]
+    return "\n".join(lines).strip()
+
+def strip_objects(text: str) -> str:
+    return re.sub(r"\{.*?\}", "", text)
+
+# State
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Render previous messages
+# UI Input + Dropdown inline
+col1, col2 = st.columns([3, 2])
+with col1:
+    user_input = st.chat_input("Describe your diagram...")
+with col2:
+    selected_diagram = st.selectbox("Diagram Type", diagram_types, label_visibility="collapsed")
+
+# History display
 for msg in st.session_state.messages:
-    css_class = "user" if msg["role"] == "user" else "assistant"
-    content = html.escape(msg["content"]) if msg["role"] == "assistant" else msg["content"]
-    st.markdown(f'<div class="bubble {css_class}">{content}</div>', unsafe_allow_html=True)
+    if msg["role"] == "user":
+        st.markdown(f"**You:** {msg['content']}")
+    else:
+        st.markdown("**Generated PUML Code:**")
+        st.code(msg["content"], language="plantuml")
 
-# Handle new input
-user_input = st.chat_input("Describe your diagram...")
-
+# On input
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
-    st.markdown(f'<div class="bubble user">{user_input}</div>', unsafe_allow_html=True)
 
     prompt = format_prompt(user_input, selected_diagram)
 
     try:
-        # Call Ollama
         res = requests.post(
             "http://localhost:11434/api/generate",
             json={"model": "gemma3", "prompt": prompt, "stream": False},
             timeout=30
         )
         res.raise_for_status()
-        def clean_puml_output(puml_code: str) -> str:
-            lines = puml_code.splitlines()
-            cleaned = [line for line in lines if "[object Object]" not in line]
-            return "\n".join(cleaned).strip()
+        raw = res.json()["response"].strip()
 
-        assistant_reply = clean_puml_output(res.text)
+        decoded = decode_escape_sequences(raw)
+        cleaned = strip_objects(clean_puml_response(decoded))
+        assistant_reply = cleaned
 
-
-        # Save to PUML file
-        with open("puml.txt", "w") as f:
+        with open("puml.txt", "w", encoding="utf-8") as f:
             f.write(assistant_reply)
             f.flush()
             os.fsync(f.fileno())
 
-        # Run PlantUML to generate SVG
         proc = subprocess.run(
             ["java", "-jar", "plantuml.jar", "-tsvg", "puml.txt"],
             capture_output=True,
@@ -121,25 +111,24 @@ if user_input:
             with open("puml.svg", "r", encoding="utf-8") as f:
                 svg = f.read()
 
-            # Store and show PUML response with escaping
+          # Add assistant reply first
             st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
-            escaped_code = html.escape(assistant_reply)
-            st.markdown(f'<div class="bubble assistant"><pre><code>{escaped_code}</code></pre></div>', unsafe_allow_html=True)
+
+            # Display PUML code just generated
+            st.markdown("**Generated PUML Code:**")
+            st.code(assistant_reply, language="plantuml")
 
             # Show diagram
-            st.markdown('<div class="diagram-container">', unsafe_allow_html=True)
+            st.markdown("### Rendered Diagram:")
             st.markdown(svg, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+
+            # Download button
+            st.download_button("Download SVG", svg, "diagram.svg", mime="image/svg+xml")
 
         else:
             st.error(f"PlantUML Error:\n{proc.stderr}")
 
-        # Optional cleanup
-        for f in ["puml.png", "puml.xml"]:
-            if os.path.exists(f):
-                os.remove(f)
-
     except Exception as e:
         err_msg = f"❌ Error: {e}"
         st.session_state.messages.append({"role": "assistant", "content": err_msg})
-        st.markdown(f'<div class="bubble assistant">{err_msg}</div>', unsafe_allow_html=True)
+        st.error(err_msg)
