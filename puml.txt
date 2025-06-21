@@ -1,11 +1,61 @@
-```plantuml
 @startuml
-title Publisher Subscriber Model
+title e-commerce system sequence diagram
 
-actor Publisher
-actor Subscriber
+actor Customer
+participant "Web Server" as WebServer
+participant "Application Server" as AppServer
+participant "Database" as DB
+participant "Payment Gateway" as PaymentGateway
 
-Publisher -> Subscriber: Event
-Subscriber --> Publisher: Acknowledgement
+Customer -> WebServer: Browse Products
+activate WebServer
+WebServer -> AppServer: Get Product Catalog
+activate AppServer
+AppServer -> DB: Retrieve Product Data
+activate DB
+DB --> AppServer: Product Data
+deactivate DB
+AppServer --> WebServer: Product Catalog
+deactivate AppServer
+WebServer --> Customer: Display Products
+deactivate WebServer
+
+Customer -> WebServer: Add Product to Cart
+activate WebServer
+WebServer -> AppServer: Add to Cart
+activate AppServer
+AppServer -> DB: Update Cart
+activate DB
+DB --> AppServer: Cart Updated
+deactivate DB
+AppServer --> WebServer: Cart Updated
+deactivate AppServer
+WebServer --> Customer: Cart Updated
+deactivate WebServer
+
+Customer -> WebServer: Proceed to Checkout
+activate WebServer
+WebServer -> AppServer: Initiate Checkout
+activate AppServer
+AppServer -> Customer: Shipping Address
+activate Customer
+Customer --> AppServer: Shipping Address
+deactivate Customer
+AppServer -> Customer: Payment Information
+activate Customer
+Customer --> AppServer: Payment Information
+deactivate Customer
+AppServer -> PaymentGateway: Process Payment
+activate PaymentGateway
+PaymentGateway --> AppServer: Payment Successful
+deactivate PaymentGateway
+AppServer -> DB: Update Order Status
+activate DB
+DB --> AppServer: Order Status Updated
+deactivate DB
+AppServer --> WebServer: Order Confirmation
+deactivate AppServer
+WebServer --> Customer: Order Confirmation
+deactivate WebServer
+
 @enduml
-```
